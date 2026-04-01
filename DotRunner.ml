@@ -1,16 +1,13 @@
--- Mario для MiniOS / MiniLang
--- Экран: 128x64 пикселей
+-- MiniMan v1.1 — исправленные коллизии
 -- Управление: left/right - движение, ok - прыжок, left+right - выход
 
--- Константы
 var SCR_W = 128
 var SCR_H = 64
-var GRAVITY = 0.5
+var GRAVITY = 0.4
 var JUMP_FORCE = -5
 var SPEED = 2
 var GROUND_Y = 54
 
--- Состояние игрока
 var px = 10
 var py = GROUND_Y
 var pvx = 0
@@ -20,52 +17,48 @@ var score = 0
 var lives = 3
 var dead = 0
 var dead_timer = 0
+var game_over = 0
+var anim = 0
+var frame = 0
 
--- Спрайт игрока (8x8)
-var player = spr.new(px, py, 8, 8)
+-- Враг стартует далеко справа
+var ex = 110
+var ey = GROUND_Y
+var evx = -1
+var enemy_alive = 1
 
--- Платформы: x, y, ширина
+var player = spr.new(px, py, 7, 8)
+var enemy = spr.new(ex, ey, 7, 8)
+
 var plat_x = [30, 70, 95, 10, 55]
 var plat_y = [44, 36, 48, 30, 22]
 var plat_w = [24, 20, 18, 20, 22]
 
--- Монеты: x, y, активна
 var coin_x = [38, 78, 102, 18, 63]
 var coin_y = [38, 30, 42, 24, 16]
 var coin_on = [1, 1, 1, 1, 1]
 
--- Враг
-var ex = 80
-var ey = GROUND_Y
-var evx = -1
-var enemy = spr.new(ex, ey, 8, 8)
-
--- Анимация
-var anim = 0
-var frame = 0
-var game_over = 0
-
--- Вспомогательная: проверка пересечения с платформой
 func check_platform(i)
   var px2 = arr.get(plat_x, i)
   var py2 = arr.get(plat_y, i)
   var pw2 = arr.get(plat_w, i)
-  if px + 8 > px2 and px < px2 + pw2 and pvy >= 0 and py + 8 > py2 and py + 8 < py2 + 8 then
-    py = py2 - 8
-    pvy = 0
-    on_ground = 1
+  -- Только падение сверху: игрок был выше платформы
+  if px + 7 > px2 and px < px2 + pw2 then
+    if pvy >= 0 and py + 8 >= py2 and py + 8 <= py2 + 6 then
+      py = py2 - 8
+      pvy = 0
+      on_ground = 1
+    end
   end
 end
 
--- Нарисовать платформу
 func draw_platform(i)
   var px2 = arr.get(plat_x, i)
   var py2 = arr.get(plat_y, i)
   var pw2 = arr.get(plat_w, i)
-  scr.frect(px2, py2, pw2, 4)
+  scr.frect(px2, py2, pw2, 3)
 end
 
--- Нарисовать монету
 func draw_coin(i)
   var ca = arr.get(coin_on, i)
   if ca == 1 then
@@ -75,7 +68,6 @@ func draw_coin(i)
   end
 end
 
--- Сбор монет
 func check_coins()
   var i = 0
   while i < 5 do
@@ -83,7 +75,7 @@ func check_coins()
     if ca == 1 then
       var cx = arr.get(coin_x, i)
       var cy = arr.get(coin_y, i)
-      if px + 8 > cx and px < cx + 5 and py + 8 > cy and py < cy + 5 then
+      if px + 7 > cx and px < cx + 5 and py + 8 > cy and py < cy + 5 then
         arr.set(coin_on, i, 0)
         score = score + 10
       end
@@ -92,71 +84,47 @@ func check_coins()
   end
 end
 
--- Нарисовать игрока (анимация)
 func draw_player()
-  spr.pos(player, px, py)
-  spr.draw(player)
-  if on_ground == 1 then
-    if pvx ~= 0 then
-      if frame == 0 then
-        scr.line(px+1, py+8, px+3, py+5)
-        scr.line(px+5, py+8, px+7, py+5)
-      else
-        scr.line(px+1, py+5, px+3, py+8)
-        scr.line(px+5, py+5, px+7, py+8)
-      end
+  scr.rect(px, py, 7, 8)
+  scr.pixel(px+1, py+2)
+  scr.pixel(px+5, py+2)
+  if on_ground == 1 and pvx ~= 0 then
+    if frame == 0 then
+      scr.line(px+1, py+8, px+3, py+6)
+      scr.line(px+4, py+6, px+6, py+8)
+    else
+      scr.line(px+1, py+6, px+3, py+8)
+      scr.line(px+4, py+8, px+6, py+6)
     end
   end
-  scr.pixel(px+2, py+2)
-  scr.pixel(px+5, py+2)
-  scr.line(px+2, py+4, px+5, py+4)
 end
 
--- Нарисовать врага
 func draw_enemy()
-  spr.pos(enemy, ex, ey)
-  spr.fdraw(enemy)
-  scr.pixel(ex+2, ey+2)
-  scr.pixel(ex+5, ey+2)
+  if enemy_alive == 1 then
+    scr.frect(ex, ey, 7, 8)
+    scr.pixel(ex+1, ey+2)
+    scr.pixel(ex+5, ey+2)
+  end
 end
 
--- Нарисовать HUD
 func draw_hud()
   scr.text(str.cat("SC:", str.str(score)), 0, 0, 1)
-  scr.text(str.cat("HP:", str.str(lives)), 80, 0, 1)
+  scr.text(str.cat("HP:", str.str(lives)), 88, 0, 1)
 end
 
--- Нарисовать землю
 func draw_ground()
-  scr.line(0, GROUND_Y + 8, SCR_W - 1, GROUND_Y + 8)
-  scr.frect(0, GROUND_Y + 9, SCR_W, 4)
+  scr.frect(0, GROUND_Y + 8, SCR_W, 4)
 end
 
--- Смерть игрока
 func player_die()
   lives = lives - 1
   dead = 1
-  dead_timer = 60
+  dead_timer = 80
   if lives <= 0 then
     game_over = 1
   end
 end
 
--- Экран смерти / игры окончена
-func show_death()
-  scr.clear()
-  if game_over == 1 then
-    scr.text("GAME OVER", 22, 20, 1)
-    scr.text(str.cat("Score:", str.str(score)), 30, 35, 1)
-    scr.text("ok - restart", 20, 48, 1)
-  else
-    scr.text("OUCH!", 45, 24, 1)
-    scr.text(str.cat("Lives:", str.str(lives)), 38, 36, 1)
-  end
-  scr.show()
-end
-
--- Сброс позиции игрока
 func respawn()
   px = 10
   py = GROUND_Y
@@ -167,15 +135,16 @@ func respawn()
   spr.pos(player, px, py)
 end
 
--- Полный сброс игры
 func restart_game()
   score = 0
   lives = 3
   game_over = 0
   dead = 0
   dead_timer = 0
-  ex = 80
+  ex = 110
+  ey = GROUND_Y
   evx = -1
+  enemy_alive = 1
   arr.set(coin_on, 0, 1)
   arr.set(coin_on, 1, 1)
   arr.set(coin_on, 2, 1)
@@ -187,16 +156,25 @@ end
 -- Главный цикл
 while 1 do
 
-  -- Если мёртв
   if dead == 1 then
-    show_death()
+    scr.clear()
+    if game_over == 1 then
+      scr.text("GAME OVER", 22, 18, 1)
+      scr.text(str.cat("Score:", str.str(score)), 28, 32, 1)
+      scr.text("ok = restart", 20, 46, 1)
+    else
+      scr.text("OUCH!", 44, 22, 1)
+      scr.text(str.cat("Lives:", str.str(lives)), 36, 36, 1)
+    end
+    scr.show()
     dead_timer = dead_timer - 1
     if dead_timer <= 0 then
       if game_over == 1 then
-        var b = btn.read()
-        if b == "ok" then
+        var bw = btn.read()
+        if bw == "ok" then
           restart_game()
         end
+        dead_timer = 1
       else
         respawn()
       end
@@ -206,36 +184,36 @@ while 1 do
   end
 
   -- Ввод
-  var held_l = btn.held("left")
-  var held_r = btn.held("right")
-  var held_ok = btn.held("ok")
+  var hl = btn.held("left")
+  var hr = btn.held("right")
   var b2 = btn.read()
 
   pvx = 0
-  if held_l == 1 then
+  if hl == 1 then
     pvx = -SPEED
   end
-  if held_r == 1 then
+  if hr == 1 then
     pvx = SPEED
   end
-
-  -- Прыжок
   if b2 == "ok" and on_ground == 1 then
     pvy = JUMP_FORCE
     on_ground = 0
   end
 
-  -- Гравитация
+  -- Физика
   pvy = pvy + GRAVITY
+  if pvy > 6 then
+    pvy = 6
+  end
   px = px + pvx
   py = py + pvy
 
-  -- Границы экрана
+  -- Границы
   if px < 0 then
     px = 0
   end
-  if px > SCR_W - 8 then
-    px = SCR_W - 8
+  if px > SCR_W - 7 then
+    px = SCR_W - 7
   end
 
   -- Земля
@@ -246,12 +224,6 @@ while 1 do
     on_ground = 1
   end
 
-  -- Упал за экран (ямы нет, но на всякий)
-  if py > SCR_H then
-    player_die()
-    continue
-  end
-
   -- Платформы
   var pi = 0
   while pi < 5 do
@@ -259,9 +231,9 @@ while 1 do
     pi = pi + 1
   end
 
-  -- Анимация ног
+  -- Анимация
   anim = anim + 1
-  if anim >= 8 then
+  if anim >= 10 then
     anim = 0
     if frame == 0 then
       frame = 1
@@ -273,52 +245,47 @@ while 1 do
   -- Монеты
   check_coins()
 
-  -- Враг: движение
-  ex = ex + evx
-  spr.pos(enemy, ex, ey)
+  -- Враг
+  if enemy_alive == 1 then
+    ex = ex + evx
+    if ex <= 20 then
+      evx = 1
+    end
+    if ex >= 108 then
+      evx = -1
+    end
+    spr.pos(enemy, ex, ey)
 
-  -- Враг разворачивается у стен
-  if ex <= 20 then
-    evx = 1
-  end
-  if ex >= 100 then
-    evx = -1
-  end
-
-  -- Проверка: прыгнул ли на врага
-  spr.pos(player, px, py)
-  spr.pos(enemy, ex, ey)
-  if spr.hit(player, enemy) == 1 then
-    if pvy > 0 and py + 8 < ey + 4 then
-      -- Прыгнул сверху — убил врага
-      score = score + 50
-      ex = 200
-      evx = 0
-      spr.pos(enemy, ex, ey)
-      pvy = JUMP_FORCE / 2
-    else
-      -- Столкновение сбоку — смерть
-      player_die()
-      continue
+    -- Коллизия игрок-враг
+    spr.pos(player, px, py)
+    var hit = spr.hit(player, enemy)
+    if hit == 1 then
+      -- Прыжок сверху: игрок падает (pvy > 0) и нижний край игрока
+      -- не глубже середины врага
+      if pvy > 0 and py + 8 < ey + 5 then
+        score = score + 50
+        enemy_alive = 0
+        pvy = -3
+      else
+        -- Боковое касание — только если враг живой и реально рядом
+        player_die()
+      end
     end
   end
 
   -- Отрисовка
   scr.clear()
   draw_ground()
-
   var di = 0
   while di < 5 do
     draw_platform(di)
     di = di + 1
   end
-
   di = 0
   while di < 5 do
     draw_coin(di)
     di = di + 1
   end
-
   draw_enemy()
   draw_player()
   draw_hud()
